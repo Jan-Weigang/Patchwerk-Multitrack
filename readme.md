@@ -51,3 +51,14 @@ services:
 Das Audiomaterial wurden von "Cambridge Music Technology" veröffentlicht und sind für nicht-kommerzielle Zwecke frei zu nutzen.
 https://www.cambridge-mt.com/ms/mtk/
 
+
+## Hinweise
+
+Für die Darstellungen der Instrumente wurden K.I.-generierte Bidler benutzt. Diese geben Gesprächsanlässe für aufmerksame Schüler, da nicht alle Instrumente fehlerfrei dargestellt werden. Oft fallen die fehler selbst der Lehrkraft nicht auf. 
+
+Die Tests bieten den "Hilfe"-Button, der die Namen der Instrumente einblendet. Insbesondere bei Effekten (z. B. "Hall") kann dies sehr hilfreich sein. 
+
+Die Tests unterscheiden sich darin, ob die erratenen Instrumente ausgeschaltet werden. Beim leichten Test verstummen die Instrumente, sobald sie erkannt wurden. So bleiben nur unerkannte Instrumente übrig und können gehört werden.
+Beim schweren Test wird zudem der Button "Joker" eingeblendet. Die Instrumente spiele weiter, auch wenn sie korrekt erkannt wurden. Einmalig können mittels Joker alle bisher erkannten Instrumente ausgeschaltet werden.
+
+Die Domain eines Tests bleibt ständig gleich. Jedes mal wird beim laden ein zufälliger Song ausgewählt.
