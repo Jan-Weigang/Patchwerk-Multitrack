@@ -24,7 +24,7 @@ In dieser App können Songs gehört und einzelne Instrumente an- und ausgestellt
 
 ## 🛠️ Setup
 
-Es muss ein .tar Image auf den Server geladen und mit einem compose-file gestartet werden. Dafür .tar und compose.yaml in einen Ordner auf dem Server ablegen und die CLI in diesem Ordner öffnen:
+Es muss ein .tar-Image auf den Server geladen und mit einer Compose-Datei gestartet werden. Dafür multitrack.tar und compose.yaml in einen Ordner auf dem Server ablegen und dort (z. B. per CLI) folgende Befehle ausführen:
 
 ```bash
 sudo docker load -i multitrack.tar
