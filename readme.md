@@ -54,7 +54,7 @@ https://www.cambridge-mt.com/ms/mtk/
 
 ## Hinweise
 
-Für die Darstellungen der Instrumente wurden K.I.-generierte Bidler benutzt. Diese geben Gesprächsanlässe für aufmerksame Schüler, da nicht alle Instrumente fehlerfrei dargestellt werden. Oft fallen die fehler selbst der Lehrkraft nicht auf. 
+Für die Darstellungen der Instrumente wurden K.I.-generierte Bilder benutzt. Diese geben Gesprächsanlässe für aufmerksame Schüler, da nicht alle Instrumente fehlerfrei dargestellt werden. Oft fallen die fehler selbst der Lehrkraft nicht auf. 
 
 Die Tests bieten den "Hilfe"-Button, der die Namen der Instrumente einblendet. Insbesondere bei Effekten (z. B. "Hall") kann dies sehr hilfreich sein. 
 
