@@ -3,6 +3,10 @@
 In dieser App können Songs gehört und einzelne Instrumente an- und ausgestellt werden. Zunächst als Übung und dann als Test schult dies das musikalische Hören. Schüler können durch das eigene Erfahren schnell einzelne Instrumente aus komplexen Songs heraushören und typische Besetzungen identifizieren.
 
 ## 🚀 Demo
+### Spielerisch erkunden
+![Demo GIF](readme_content/multitrack_example.gif)
+
+### Test bestehen
 ![Demo GIF](readme_content/multitrack_test_example.gif)
 
 ## 📦 Features
