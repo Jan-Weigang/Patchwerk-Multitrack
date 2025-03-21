@@ -2,17 +2,24 @@
 
 In dieser App können Songs gehört und einzelne Instrumente an- und ausgestellt werden. Zunächst als Übung und dann als Test schult dies das musikalische Hören. Schüler können durch das eigene Erfahren schnell einzelne Instrumente aus komplexen Songs heraushören und typische Besetzungen identifizieren.
 
+
 ## 🚀 Demo
 ### Spielerisch erkunden
 ![Demo GIF](readme_content/multitrack_example.gif)
 
+
 ### Test bestehen
 ![Demo GIF](readme_content/multitrack_test_example.gif)
 
+
 ## 📦 Features
-- Freies anhören und ausprobieren
-- Tests in drei Schwierigkeitsstufen
-- Ausprobieren von E-Gitarren-Effekten
+- Über 30 Songs der Genres EDM, Orchester, Hip-Hop, Indie, Jazz, Metal, Pop und Rock
+- Offene Spielwiese zum motivierten Ausprobieren und Erfahrungen sammeln
+- Didaktisch sinnvolle "Tests" in angepassten Schwierigkeitsstufen
+- Simulation von Effektgeräten mit mehreren Audioquellen
+- Nutzbar an allen internetfähigen Endgeräten
+- DSGVO-konform und ohne Login
+
 
 
 ## 🛠️ Setup
