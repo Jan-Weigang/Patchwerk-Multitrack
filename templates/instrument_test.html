@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Play {{ metadata['Artist']|default('Unknown Artist') }} - {{ metadata['Title']|default('Untitled') }}</title>
+    <style>
+        :root {
+            --override: hsl(220, 35%, 50%); 
+            --override-sat: hsl(220, 80%, 37%); 
+            --override-desat: hsl(220, 80%, 25%);
+            --highlighted: hsl(310, 38%, 55%);
+        }
+        #progressBar {
+            flex-grow: 1; 
+            height: 2rem;
+            background-color: #ddd;
+            border-radius: 0.5rem;
+        }
+
+        #progress {
+            height: 100%;
+            background-color: hsl(40, 30%, 50%);
+            width: 0%;
+            border-radius: 0.5rem;
+        }
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 2rem;
+            padding: 2rem;
+        }
+        .playback-grid {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+        }
+        .playback-grid button {
+            height: 3rem;
+            width: 4rem;
+            margin-right: 1rem;
+            border-radius: 1rem;
+            border-style: outset;
+            background-color: hsl(40, 30%, 70%);
+            border-color: hsl(40,30%,70%);
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: black;
+            text-align: center;
+        }
+        .playback-grid button:hover {
+            cursor: pointer;
+            background-color: hsl(40,30%,50%);
+            border-color: hsl(40,30%,50%);
+        }
+        .playback-grid button:active {
+            border-style: inset;
+        }
+
+        @keyframes rainbow-shadow {
+            0%   { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(0, 80%, 80%)); }   /* Red */
+            15%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(30, 80%, 80%)); }  /* Orange */
+            80%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(60, 80%, 80%)); }  /* Yellow */
+            45%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(120, 80%, 80%)); } /* Green */
+            60%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(240, 80%, 80%)); } /* Blue */
+            75%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(275, 80%, 80%)); } /* Indigo */
+            90%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(300, 80%, 80%)); } /* Violet */
+            100% { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(0, 80%, 80%)); }   /* Red */
+        }
+        body {
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+            background-color: hsl(0, 0%, 20%);
+            color: white;
+        }
+
+        a, a:visited {
+            color:hsl(40, 30%, 70%)
+        }
+        a:hover {
+            color:hsl(40, 30%, 40%)
+        }
+
+        .custom-grid-button {
+            background-color: #00f;
+            --button-color: var(--override);
+            background: linear-gradient(38deg,hsl(from var(--button-color) calc(h - 5) calc(s * 1.2) calc(l * .9)) 0,hsl(from var(--button-color) h s l) 56%,hsl(from var(--button-color) calc(h - 20) calc(s * 1.125) l) 100%);
+            color: #fff!important;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-decoration: none;
+            border-radius: .5rem;
+            filter: drop-shadow(.1rem .1rem .2rem gray);
+            letter-spacing: .03rem;
+            aspect-ratio: 1 / 1;
+            padding: 0;
+            border-radius: 1rem;
+            border: none;
+            font-size: 1.4rem;
+            font-weight: bold;
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+
+            --shadow-intensity: 0px; /* Default intensity */
+            /* box-shadow: 0 0 calc(var(--shadow-intensity)/2) rgb(168, 159, 28); */
+            animation: rainbow-shadow 5s linear infinite;
+        }
+        .custom-grid-button:hover {
+            cursor: pointer;
+        }
+
+        .custom-grid-button:active {
+            transform: scale(0.98);
+        }
+        .custom-grid-button h4{
+            position: absolute;
+            bottom: 0;
+            color: black;
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin: 0 0 0.5rem 0;
+            font-family: arial;
+            font-stretch: condensed;
+            background-color: rgba(255,255,255,0.8);
+            border-radius: 0.5rem;
+            padding: 0.2rem 0.5rem;
+        }
+        .muted {
+            --button-color: var(--override-desat);
+        }
+        .muted img {
+            opacity: 0.4;
+        }
+        .active {
+            --button-color: var(--override-sat);
+        }
+        img {
+            border-radius: 1rem;
+            width: 100%;
+        }
+        .metadata-section {
+            position: absolute;
+            top: 1rem;
+            z-index: 1;
+            left: 50%;
+            transform: translate(-50%, 0%);
+        }
+        .metadata-section details {
+            background-color: #4e4e4e;
+            border-radius: 1rem;
+            padding: 1rem;
+            width: 80vw;
+        }
+
+        .metadata-section summary {
+            font-weight: bold;
+            cursor: pointer;
+            color: #b1b1b1;
+        }
+
+        .metadata-section summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .metadata-section ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .metadata-section li {
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .marker {
+            font-size: 5rem;
+            position: absolute;
+        }
+
+        .completion-message {
+            position: absolute;
+            z-index: 1;
+            left: 50%;
+            transform: translate(-50%, 0%);
+            background-color: #3f9d60;
+            border-radius: 1rem;
+            width: 80vw;
+            text-align: center;
+            top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="metadata-section">
+        <details>
+            <summary>{{ metadata['Artist']|default('Unknown Artist') }} - {{ metadata['Title']|default('Untitled') }}</summary>
+            <div id="metadata-content">
+                <h2>Track Details</h2>
+                <ul>
+                    {% for key, value in metadata.items() %}
+                    <li><strong>{{ key }}:</strong> {{ value }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </details>
+    </div>
+
+
+    
+    <div class="playback-grid" style="margin-top:4rem;">
+        <button id="playPauseButton" onclick="playAll()">▶</button>
+        <button onclick="stopAll()">⏹</button>
+        <div id="progressBar">
+            <div id="progress"></div>
+        </div>
+        <a href="#" style="margin-left:1rem" onclick="toggleText()">Hilfe</a>
+        <a href="/" style="margin-left:1rem"><b>Menü</b></a>
+    </div>
+
+    <div id="completionMessage" class="completion-message" style="display: none;">
+        <p>Du hast alle Instrumente gefunden!</p>
+    </div>
+
+
+
+    <div class="button-grid">
+        {% for instrument, details in instruments.items() %}
+        <div class="{{ 'original' if details.original else 'added' }}">
+            <audio id="audio_{{ instrument }}" src="{{ url_for('static', filename='music/' + genre + '/' + nickname + '_' + instrument + '.mp3') }}" preload="auto"></audio>
+            <button id="btn_{{ instrument }}" class="custom-grid-button active"
+                    data-type="{{ 'original' if details.original else 'added' }}"
+                    onclick="toggleMarker(this)">
+
+                {% if details.image %}
+                <img id="img_{{ instrument }}" src="{{ url_for('static', filename='instruments/' + details.image) }}" alt="{{ instrument }}" class="instrument-image">
+                <h4 style="display:none">{{ instrument }}</h4>
+                {% else %}
+                {{ instrument }}
+                {% endif %}
+                <span class="marker" style="display: none;"></span>  <!-- Container for the mark -->
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <script>
+        var audioElements = document.querySelectorAll('audio');
+        var progressBar = document.getElementById('progress');
+
+        var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        var analyzers = {};
+        var intensityData = {};
+
+        
+        // function playAll() {
+        //     audioElements.forEach(el => {
+        //         el.play();
+        //         el.ontimeupdate = updateProgress;
+        //     });
+        //     requestAnimationFrame(updateIntensities);
+        // }
+
+        function playAll() {
+            // Ensure audioElements is treated as an array
+            const elementsArray = Array.from(audioElements);
+            const isPlaying = elementsArray.some(audio => !audio.paused);
+
+            elementsArray.forEach(audio => {
+                if (isPlaying) {
+                    audio.pause();
+                } else {
+                    audio.play();
+                    audio.ontimeupdate = updateProgress;
+                }
+            });
+
+            // Update button text accordingly
+            const button = document.getElementById('playPauseButton');
+            button.textContent = isPlaying ? '▶' : '⏸';
+
+            if (!isPlaying) {
+                requestAnimationFrame(updateIntensities);
+            }
+        }
+
+
+
+        function stopAll() {
+            audioElements.forEach(el => {
+                el.pause();
+                el.currentTime = 0;
+            });
+        }
+
+
+
+        function synchronizeAudios() {
+            var firstAudio = audioElements[0];
+            var firstTime = firstAudio.currentTime;
+            audioElements.forEach(el => {
+                if (Math.abs(el.currentTime - firstTime) > 0.08) { // Threshold of 0.1 seconds
+                    el.currentTime = firstTime; // Reset to the first audio's current time
+                    console.log("Just synchronized");
+                }
+            });
+        }
+
+
+
+        function updateProgress() {
+            var longestAudio = Array.from(audioElements).reduce((a, b) => a.duration > b.duration ? a : b);
+            var percentage = (longestAudio.currentTime / longestAudio.duration) * 100;
+            progressBar.style.width = percentage + '%';
+        }
+
+
+        
+
+        function setupAudioElements() {
+            document.querySelectorAll('audio').forEach(audio => {
+                var source = audioContext.createMediaElementSource(audio);
+                var analyzer = audioContext.createAnalyser();
+                source.connect(analyzer);
+                analyzer.connect(audioContext.destination);
+                analyzers[audio.id] = analyzer;
+                intensityData[audio.id] = { data: [], muted: false }; // Initialize with muted status
+            });
+        }
+
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setupAudioElements();
+        });
+
+        function toggleText() {
+            // Get all <h4> elements inside .custom-grid-button
+            const headers = document.querySelectorAll('.custom-grid-button h4');
+
+            // Toggle the display style for each <h4>
+            headers.forEach(header => {
+                if (header.style.display === 'none') {
+                    header.style.display = 'block'; // Show text
+                } else {
+                    header.style.display = 'none'; // Hide text
+                }
+            });
+        }
+
+
+
+        var correctCount = 0;
+        var totalCount = document.querySelectorAll('.custom-grid-button[data-type="original"]').length;
+
+        function toggleMarker(element) {
+            var marker = element.querySelector('.marker');
+            var completion = document.getElementById('completionMessage');
+            var isCorrectlyMarked = (marker.style.display !== 'none');
+            var isDone = (completion.style.display !== 'none');
+            var shouldBeMarked = (element.getAttribute('data-type') === 'original');
+
+            if (isDone) {
+                return;
+            }
+            // Toggle the marker display
+            if (isCorrectlyMarked) {
+                marker.style.display = 'none';
+                if (shouldBeMarked) correctCount--;
+            } else {
+                marker.style.display = 'block';
+                marker.textContent = element.getAttribute('data-type') === 'original' ? '✔️' : '❌';
+                if (shouldBeMarked) correctCount++;
+            }
+
+            // Check if all original instruments have been correctly marked
+            if (correctCount === totalCount) {
+                document.getElementById('completionMessage').style.display = 'block';
+            }
+        }
+
+
+
+
+
+
+    </script>
+</body>
+</html>

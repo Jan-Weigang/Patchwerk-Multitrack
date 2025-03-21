@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <meta charset="utf-8">
+    <title>Music List</title>
+    <style>
+        body {
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+            background-color: hsl(0, 0%, 20%);
+            color: white;
+        }
+        a, a:visited {
+            color:hsl(40, 30%, 70%)
+        }
+        a:hover {
+            color: hsl(40, 20%, 50%);
+        }
+
+        h2 {
+            color: hsl(40, 20%, 80%);
+            padding-left: 2rem;
+            margin: 1rem 0 0 0;
+        }
+        ul {
+            padding-left: 2rem;
+            padding-right: 2rem;
+            padding-bottom: 0.5rem;
+        }
+        li {
+            line-height: 1.2rem;
+            margin-bottom: 0.5rem;
+            list-style-type: none;
+        }
+
+        .genre-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); /* Adjust the min and max widths as needed */
+            gap: 2rem;
+            padding: 2rem;
+        }
+        .genre-section {
+            background-color: hsl(0, 0%, 30%);
+            border-radius: 1rem;
+        }
+        .genre-section h3 {
+            padding: 0.5rem;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .genre-grid::before {
+            content: "Die Zahl ist die Anzahl der Instrumente.";
+            font-size: 0.8rem;
+            font-style: italic;
+            color: hsl(40,10%,50%);
+            position: absolute;
+            transform: translateY(-2rem); 
+        }
+
+
+    </style>
+</head>
+<!-- <body>
+    <h1>Music Tracks</h1>
+    {% for genre, genre_data in music_files.items() %}
+        <h3>{{ genre }}</h3> 
+        <ul>
+            {% for nickname, track_data in genre_data.items() %}
+                <li>
+                    <a href="{{ url_for('play', genre=genre, nickname=nickname) }}">
+                        {{ track_data.metadata.Title if track_data.metadata else 'Unknown Title' }}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endfor %}
+</body> -->
+
+<body>
+    <h1 style="text-align: center; color: hsl(40, 50%, 65%);">Patchwerk Gehörtraining</h1>
+    <h3 style="text-align: center; color: hsl(40, 10%, 50%);">Lerne Instrumente zu unterscheiden, kinderleicht!</h3>
+    <h2>Spiele & Tests:</h2>
+    <div class="genre-grid">  <!-- This will hold the grid for all genres -->
+
+        <div class="genre-section" style="background-color: hsl(0, 0%, 40%);"> <!-- Each genre and its tracks are in a section -->
+            <h3>Instrumente raten</h3> <!-- Display the genre as a subheading -->
+            <ul>
+                <li>
+                    <a href="/instrument_test">
+                        Einzeln
+                    </a>
+                </li>
+                <li>
+                    <a href="/full_mix_test">
+                        Im Song (leicht)
+                    </a>
+                </li>
+                <li>
+                    <a href="/full_mix_test/hard">
+                        Im Song (schwer)
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="genre-section" style="background-color: hsl(0, 0%, 40%);"> <!-- Each genre and its tracks are in a section -->
+            <h3>Effekte ausprobieren</h3> <!-- Display the genre as a subheading -->
+            <ul>
+                <li>
+                    <a href="/effects">
+                        Teste Gitarreneffekte
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <h2>Alle Songs:</h2>
+    <div class="genre-grid">
+        
+        <!-- Loop through each genre -->
+        {% for genre, genre_data in music_files.items() %}
+        <div class="genre-section"> <!-- Each genre and its tracks are in a section -->
+            <h3>{{ genre }}</h3> <!-- Display the genre as a subheading -->
+            <ul>
+                <!-- Loop through each track within the genre -->
+                {% for nickname, track_data in genre_data.items() %}
+                <li>
+                    <!-- Create a link to the play route for each track -->
+                    <a href="{{ url_for('play', genre=genre, nickname=nickname) }}">
+                        {{ track_data.instrument_count }} - {{ track_data.metadata.Title if track_data.metadata else 'Unknown Title' }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+
+
+        
+
+
+    </div>
+</body>
+
+
+</html>

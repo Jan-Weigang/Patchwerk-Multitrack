@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <meta charset="utf-8">
+    <title>Play {{ metadata['Artist']|default('Unknown Artist') }} - {{ metadata['Title']|default('Untitled') }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <style>
+        :root {
+            --override: hsl(220, 35%, 50%); 
+            --override-sat: hsl(220, 80%, 37%); 
+            --override-desat: hsl(220, 80%, 25%);
+            --highlighted: hsl(310, 38%, 55%);
+        }
+        #progressBar {
+            flex-grow: 1; 
+            height: 2rem;
+            background-color: #ddd;
+            border-radius: 0.5rem;
+        }
+
+        #progress {
+            height: 100%;
+            background-color: hsl(40, 30%, 50%);
+            width: 0%;
+            border-radius: 0.5rem;
+        }
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 2rem;
+            padding: 2rem;
+        }
+        .button-grid button:is(.fx)::before {
+            content: '➡'; /* Arrow symbol, you can use an image or SVG here */
+            position: absolute;
+            top: 50%; /* Center vertically in the button */
+            left: -2rem; /* Position outside the right edge of the button */
+            transform: translateY(-50%); /* Align arrow correctly */
+            font-size: 24px; /* Arrow size, adjust as needed */
+            color: white; /* Arrow color, adjust as needed */
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .playback-grid {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+        }
+        .playback-grid button {
+            height: 3rem;
+            width: 4rem;
+            margin-right: 1rem;
+            border-radius: 1rem;
+            border-style: outset;
+            background-color: hsl(40, 30%, 70%);
+            border-color: hsl(40,30%,70%);
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: black;
+            text-align: center;
+        }
+        .playback-grid button:hover {
+            cursor: pointer;
+            background-color: hsl(40,30%,50%);
+            border-color: hsl(40,30%,50%);
+        }
+        .playback-grid button:active {
+            border-style: inset;
+        }
+
+        @keyframes rainbow-shadow {
+            0%   { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(0, 80%, 80%)); }   /* Red */
+            15%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(30, 80%, 80%)); }  /* Orange */
+            80%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(60, 80%, 80%)); }  /* Yellow */
+            45%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(120, 80%, 80%)); } /* Green */
+            60%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(240, 80%, 80%)); } /* Blue */
+            75%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(275, 80%, 80%)); } /* Indigo */
+            90%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(300, 80%, 80%)); } /* Violet */
+            100% { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(0, 80%, 80%)); }   /* Red */
+        }
+        body {
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+            background-color: hsl(0, 0%, 20%);
+            color: white;
+        }
+
+        a, a:visited {
+            color:hsl(40, 30%, 70%)
+        }
+        a:hover {
+            color:hsl(40, 30%, 40%)
+        }
+
+        .button-grid::before {
+            content: "Klicke Instrumente an, um sie an-/auszuschalten.";
+            font-weight: bold;
+            color: hsl(40,20%,50%);
+            position: absolute;
+            transform: translateY(-2rem); 
+        }
+
+        .custom-grid-button {
+            position: relative;
+            /* background-color: #00f; */
+            --button-color: var(--override);
+            background: var(--button-color);
+            background: linear-gradient(38deg,hsl(from var(--button-color) calc(h - 5) calc(s * 1.2) calc(l * .9)) 0,hsl(from var(--button-color) h s l) 56%,hsl(from var(--button-color) calc(h - 20) calc(s * 1.125) l) 100%);
+            color: #fff!important;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-decoration: none;
+            border-radius: .5rem;
+            filter: drop-shadow(.1rem .1rem .2rem gray);
+            letter-spacing: .03rem;
+            aspect-ratio: 1 / 1;
+            padding: 0;
+            border-radius: 1rem;
+            border: none;
+            font-size: 1.4rem;
+            font-weight: bold;
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+
+            --shadow-intensity: 0px; /* Default intensity */
+            /* box-shadow: 0 0 calc(var(--shadow-intensity)/2) rgb(168, 159, 28); */
+            animation: rainbow-shadow 5s linear infinite;
+        }
+        .custom-grid-button:hover {
+            cursor: pointer;
+        }
+
+        .custom-grid-button:active {
+            transform: scale(0.98);
+        }
+        .custom-grid-button h4{
+            position: absolute;
+            bottom: 0;
+            color: black;
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin: 0 0 0.5rem 0;
+            font-family: arial;
+            font-stretch: condensed;
+            background-color: rgba(255,255,255,0.8);
+            border-radius: 0.5rem;
+            padding: 0.2rem 0.5rem;
+            left: auto;
+            right: auto;
+        }
+        .muted {
+            --button-color: var(--override-desat);
+            animation: none;
+        }
+        .muted img {
+            opacity: 0.4;
+        }
+        /* .active {
+            --button-color: var(--override-sat);
+        } */
+        img {
+            border-radius: 1rem;
+            width: 100%;
+        }
+        .metadata-section {
+            position: absolute;
+            top: 1rem;
+            z-index: 1;
+            left: 50%;
+            transform: translate(-50%, 0%);
+        }
+        .metadata-section details {
+            background-color: #4e4e4e;
+            border-radius: 1rem;
+            padding: 1rem;
+            width: 80vw;
+        }
+
+        .metadata-section summary {
+            font-weight: bold;
+            cursor: pointer;
+            color: #b1b1b1;
+        }
+
+        .metadata-section summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .metadata-section ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .metadata-section li {
+            display: flex;
+            flex-direction: row;
+            margin-bottom: 0.5rem;
+            line-height: 1.5rem;
+        }
+        .metadata-section li strong {
+            width: max(10ch, 15vw);
+            flex-shrink: 0;
+            display: block;
+        }
+        .metadata-section li span {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="metadata-section">
+        <details>
+            <summary>{{ metadata['Artist']|default('Unknown Artist') }} - {{ metadata['Title']|default('Untitled') }}</summary>
+            <div id="metadata-content">
+                <h2>Track Details</h2>
+                <ul>
+                    {% for key, value in metadata.items() %}
+                    <li><strong>{{ key }}:</strong> {{ value }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </details>
+    </div>
+
+
+    <div class="playback-grid" style="margin-top:4rem;">
+        <button id="playPauseButton" onclick="playAll()">▶</button>
+        <button onclick="stopAll()">⏹</button>
+        <div id="progressBar">
+            <div id="progress"></div>
+        </div>
+        <a href="#" style="margin-left:1rem" onclick="toggleText()">Hilfe</a>
+        <a href="/" style="margin-left:1rem"><b>Menü</b></a>
+    </div>
+
+
+
+    <div class="button-grid">
+        {% for instrument, details in instruments.items() %}
+        <button id="btn_{{ instrument }}"
+                class="custom-grid-button active {{ 'fx' if details.fx else '' }}"
+                data-path="{{ url_for('static', filename='music/' + genre + '/' + nickname + '_' + instrument + '.mp3') }}"
+                onclick="toggleMute('{{ instrument }}')">
+            {% if details.image %}
+            <img id="img_{{ instrument }}" src="{{ url_for('static', filename='instruments/' + details.image) }}" alt="{{ instrument }}" class="instrument-image">
+            <h4 style="display:none">{{ instrument }}</h4>
+            {% else %}
+            {{ instrument }}
+            {% endif %}
+        </button>
+        {% endfor %}
+    </div>
+    
+
+
+
+
+
+    <script>
+
+        var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        var audioBuffers = {};  // Stores the decoded audio data
+        var audioSources = {};  // Stores the source nodes for playing audio
+        var gainNodes = {};
+
+        var audioElements = document.querySelectorAll('audio');
+        var progressBar = document.getElementById('progress');
+
+        var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        var analyzers = {};
+        var intensityData = {};
+
+        var startTime = 0;
+        var audioDuration = 0; // Longest audio duration for the progress bar calculation
+
+        var isPlaying = false; // Track playback state
+        var startOffset = 0; // Offset to start playback from when resuming
+
+
+        
+        // Function to load an audio file and return a promise that resolves with the buffer
+        function loadAudio(instrument, url) {
+            return fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok for ' + url);
+                    }
+                    return response.arrayBuffer();
+                })
+                .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
+                .then(decodedData => {
+                    audioBuffers[instrument] = decodedData;
+                })
+                .catch(error => {
+                    console.error('Error loading audio file:', error);
+                });
+        }
+
+        // Function to initialize all audio files
+        function initializeAudio() {
+            const loadPromises = [];
+
+            document.querySelectorAll('.custom-grid-button').forEach(button => {
+                const instrument = button.id.replace('btn_', '');
+                const path = button.getAttribute('data-path');
+                loadPromises.push(loadAudio(instrument, path));  // Load each instrument's audio file and store the promise
+            });
+
+            Promise.all(loadPromises)
+                .then(() => {
+                    console.log('All audio files loaded successfully');
+                    // setupAudioElements();  // Call setup only after all files are loaded
+                })
+                .catch(error => {
+                    console.error('Failed to load all audio files:', error);
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeAudio();
+        });
+
+        
+
+        function playAll() {
+            if (!isPlaying) {
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume(); // Ensures the audio context is running
+                }
+                var currentTime = audioContext.currentTime;
+                startTime = currentTime - startOffset; // Adjust start time by the offset
+                
+                Object.keys(audioBuffers).forEach(instrument => {
+                    var bufferDuration = audioBuffers[instrument].duration;
+                    if (bufferDuration > audioDuration) {
+                        audioDuration = bufferDuration; // Set the longest duration for progress calculation
+                    }
+                    var button = document.getElementById('btn_' + instrument); // Get the button for the instrument
+                    var isMuted = button && button.classList.contains('muted'); // Check if the button has the 'muted' class
+
+                    if (!audioSources[instrument]) { // Only create a new source if it doesn't exist
+                        var source = audioContext.createBufferSource();
+                        source.buffer = audioBuffers[instrument];
+                        
+                        var analyzer = audioContext.createAnalyser(); // Create a new AnalyserNode for this source
+                        var gainNode = audioContext.createGain();
+
+
+
+                        source.connect(gainNode);
+                        gainNode.connect(analyzer);
+                        analyzer.connect(audioContext.destination);
+
+                        // Set the initial mute state based on the button class
+                        gainNode.gain.value = isMuted ? 0 : 1;
+                        
+
+                        // store data
+                        audioSources[instrument] = source;
+                        analyzers[instrument] = analyzer; 
+                        gainNodes[instrument] = gainNode; 
+                        
+                        
+
+                        // Configure the analyzer if necessary
+                        analyzer.fftSize = 8192;
+                        analyzer.smoothingTimeConstant = 1;
+
+                        source.onended = () => {
+                            // clean up
+                            audioSources[instrument] = null;
+                            analyzers[instrument] = null;  
+                            gainNodes[instrument] = null;
+                        };
+                    }
+                    audioSources[instrument].start(0, startOffset % audioBuffers[instrument].duration); // Start from the last offset
+                });
+
+                isPlaying = true;
+                updateProgress(); // Start updating the progress bar
+                requestAnimationFrame(updateIntensities);
+            } else {
+                pauseAll(); // If playing, then stop all sources
+            }
+            updatePlayer();
+        }
+
+        function pauseAll() {
+            var currentTime = audioContext.currentTime;
+            startOffset = currentTime - startTime; // Update startOffset to maintain the pause position
+
+            Object.keys(audioSources).forEach(instrument => {
+                if (audioSources[instrument]) {
+                    audioSources[instrument].stop();
+                    audioSources[instrument] = null;
+                }
+            });
+
+            isPlaying = false;
+            stopAnimation(startOffset);
+            updatePlayer();
+        }
+
+        function stopAll() {
+            startOffset = 0;
+            Object.keys(audioSources).forEach(instrument => {
+                if (audioSources[instrument]) {
+                    audioSources[instrument].stop();
+                    audioSources[instrument] = null;
+                }
+            });
+
+            isPlaying = false;
+            stopAnimation(startOffset);
+            updatePlayer();
+        }
+
+        function updatePlayer() {
+            // Update button text accordingly
+            const button = document.getElementById('playPauseButton');
+            button.textContent = isPlaying ? '⏸' : '▶';
+        }
+
+        function stopAnimation(elapsed)  {
+            percentage = getProgressPercentage(elapsed);
+            progressBar.style.width = percentage + '%'; // Reset progress bar after completion
+            cancelAnimationFrame(progressAnimationFrame); // Stop the progress update loop
+            cancelAnimationFrame(updateIntensityFrame); 
+            resetIntensities();
+        }
+
+
+        function toggleMute(instrument) {
+            // Reference to the button controlling the mute state
+            var button = document.getElementById('btn_' + instrument);
+            
+            // Determine the muted state based on the presence of the 'muted' class on the button
+            var isCurrentlyMuted = button.classList.contains('muted');
+
+            if (audioSources[instrument]) {
+                if (!isCurrentlyMuted) {
+                    gainNodes[instrument].gain.value = 0; // Mute the audio
+                } else {
+                    gainNodes[instrument].gain.value = 1; 
+                }
+                audioSources[instrument].muted = !isCurrentlyMuted;
+            }
+
+            // Toggle the 'muted' class on the button to reflect the new state
+            button.classList.toggle('muted', !isCurrentlyMuted);
+            resetIntensitiy(button);
+        }
+
+        function getProgressPercentage(elapsed) {
+            var percentage = (elapsed / audioDuration) * 100;
+            percentage = Math.min(100, percentage);
+            return percentage;
+        }
+
+
+        var progressAnimationFrame;
+
+        function updateProgress() {
+            if (audioContext.state !== 'running') {
+                console.log("Waiting for AudioContext to be in running state...");
+                return requestAnimationFrame(updateProgress); // Try updating progress again on the next frame
+            }
+            var elapsed = audioContext.currentTime - startTime;
+            percentage = getProgressPercentage(elapsed);
+
+            var progressBar = document.getElementById('progress');
+            if (progressBar) {
+                progressBar.style.width = percentage + '%';
+            }
+
+            // Continue updating until the track is over
+            if (elapsed < audioDuration) {
+                progressAnimationFrame = requestAnimationFrame(updateProgress);
+            } else {
+                stopAnimation(0);
+            }
+        }
+
+
+
+
+        var updateIntensityFrame;
+
+        function updateIntensities() {
+            Object.keys(analyzers).forEach(id => {
+                
+                var analyzer = analyzers[id];
+                if (audioSources[id].muted) {
+                    // Skip updating this instrument if muted
+                    return;
+                }
+
+                var dataArray = new Uint8Array(analyzer.fftSize); // Create an array to hold the waveform data
+                analyzer.getByteTimeDomainData(dataArray); // Get waveform data
+
+                // Calculate average volume from the waveform data
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                    let x = (dataArray[i] / 128.0) - 1; // Normalize the data (Uint8Array values are from 0 to 255, we normalize them to -1 to +1)
+                    sum += x * x; // Sum the squares of each normalized sample
+                }
+                let rms = Math.sqrt(sum / dataArray.length); // Calculate the root mean square (RMS) of the samples
+                let volume = rms * 100; // Scale it up for better visualization (not a dB value)
+                
+                // Calculate visual parameters based on average intensity
+                var intensityShadow = Math.min(5, volume / 10); // Scale shadow intensity
+                var saturationLevel = Math.min(150, 20 + volume * 10); // Scale saturation from 50% to 100%
+
+                // Update the button shadow and image saturation
+                var button = document.getElementById('btn_' + id.replace('audio_', ''));
+                var imageElement = document.getElementById('img_' + id.replace('audio_', ''));
+                if (button) {
+                    button.style.setProperty('--shadow-intensity', `${intensityShadow}rem`);
+                }
+                if (imageElement) {
+                    imageElement.style.filter = `saturate(${saturationLevel}%)`;
+                }
+            });
+
+            // Use requestAnimationFrame for a smooth animation loop
+            updateIntensityFrame = requestAnimationFrame(updateIntensities);
+        }
+
+        function resetIntensities() {
+            // Select all buttons by a common class or attribute if they're dynamically generated
+            // Here assuming buttons have a common class or can be selected by a part of their id that includes 'btn_'
+            document.querySelectorAll('[id^="btn_"]').forEach(button => {
+                // Extract the instrument identifier from the button id if necessary
+                // Assuming id format is 'btn_instrumentName'
+                let instrument = button.id.replace('btn_', '');
+
+                // Reset the shadow intensity
+                button.style.setProperty('--shadow-intensity', `0rem`);
+
+                // Find the corresponding image element and reset its saturation
+                let imageElement = document.getElementById('img_' + instrument);
+                if (imageElement) {
+                    imageElement.style.filter = `saturate(80%)`;  // Setting saturation to a default level
+                }
+            });
+        }
+
+        function resetIntensitiy(button) {
+            let instrument = button.id.replace('btn_', '');
+
+            // Reset the shadow intensity
+            button.style.setProperty('--shadow-intensity', `0rem`);
+
+            // Find the corresponding image element and reset its saturation
+            let imageElement = document.getElementById('img_' + instrument);
+            if (imageElement) {
+                imageElement.style.filter = `saturate(80%)`;  // Setting saturation to a default level
+            }
+
+        }
+
+
+
+        function toggleText() {
+            // Get all <h4> elements inside .custom-grid-button
+            const headers = document.querySelectorAll('.custom-grid-button h4');
+
+            // Toggle the display style for each <h4>
+            headers.forEach(header => {
+                if (header.style.display === 'none') {
+                    header.style.display = 'block'; // Show text
+                } else {
+                    header.style.display = 'none'; // Hide text
+                }
+            });
+        }
+
+
+    </script>
+</body>
+</html>
