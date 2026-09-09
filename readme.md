@@ -49,7 +49,9 @@ services:
 
 ## 📄 Lizenzen
 Das Audiomaterial wurde im Rahmen wissenschaftlicher Arbeiten oder von "Cambridge Music Technology" veröffentlicht und sind für nicht-kommerzielle Zwecke frei zu nutzen.
+
 https://www.cambridge-mt.com/ms/mtk/
+
 https://research.cs.aalto.fi/acoustics/virtual-acoustics/research/acoustic-measurement-and-analysis/85-anechoic-recordings.html
 
 
