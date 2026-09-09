@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finde das Instrument</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <style>
+        :root { --accent: hsl(40, 30%, 70%); }
+        body {
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+            background-color: hsl(0, 0%, 20%);
+            color: white;
+        }
+        a, a:visited { color: hsl(40, 30%, 70%); }
+        a:hover { color: hsl(40, 30%, 40%); }
+
+        .playback-grid {
+            display: flex; align-items: center; justify-content: flex-end;
+            padding: 1rem; gap: 1rem;
+        }
+
+        .target {
+            text-align: center;
+            margin-top: 1rem;
+        }
+        .target h2 { color: hsl(40, 20%, 80%); margin: 0.5rem 0; }
+        .target .target-name {
+            font-size: 2rem; font-weight: bold; color: hsl(40, 50%, 65%);
+        }
+        .target img {
+            width: 150px; height: 150px; object-fit: cover;
+            border-radius: 1rem; margin-top: 0.5rem;
+            filter: drop-shadow(.1rem .1rem .3rem black);
+        }
+
+        .option-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2rem;
+            padding: 2rem;
+        }
+        .option-card {
+            position: relative;
+            width: 200px;
+            background: hsl(0, 0%, 30%);
+            border-radius: 1rem;
+            padding: 1.5rem 1rem;
+            display: flex; flex-direction: column; align-items: center; gap: 1rem;
+            border: 0.25rem solid transparent;
+        }
+                .option-card.is-correct { border-color: #0f0; }
+        .option-card.is-wrong { border-color: red; }
+
+        .player-number { font-weight: bold; color: hsl(40, 20%, 70%); }
+
+        .play-btn {
+            height: 4rem; width: 4rem; border-radius: 50%;
+            border: none; cursor: pointer;
+            background-color: var(--accent); color: black;
+            font-size: 1.6rem; font-weight: bold;
+        }
+        .play-btn:hover { background-color: hsl(40, 30%, 55%); }
+        .play-btn:active { transform: scale(0.96); }
+
+        .select-btn {
+            border: none; border-radius: 0.75rem; cursor: pointer;
+            padding: 0.6rem 1rem; font-weight: bold; font-size: 1rem;
+            background-color: hsl(220, 35%, 50%); color: white;
+        }
+        .select-btn:hover { background-color: hsl(220, 45%, 42%); }
+        .select-btn:disabled { opacity: 0.4; cursor: default; }
+
+        .reveal { text-align: center; }
+        .reveal img {
+            width: 90px; height: 90px; object-fit: cover; border-radius: 0.75rem;
+        }
+        .reveal-name { font-weight: bold; margin-top: 0.3rem; }
+
+        .marker {
+            display: none;
+            position: absolute; top: 0.5rem; right: 0.5rem;
+            font-size: 3rem;
+            -webkit-text-stroke-color: black; -webkit-text-stroke-width: 0.2rem;
+        }
+
+        .completion-message {
+            display: none;
+            position: fixed; z-index: 2; left: 50%; top: 1rem;
+            transform: translateX(-50%);
+            background-color: #3f9d60; color: black;
+            border-radius: 1rem; width: 80vw; text-align: center; padding: 0.5rem 1rem;
+        }
+        .completion-message.wrong { background-color: #3f949d; }
+        .completion-message a { color: black; font-weight: bold; }
+
+        .niveau-wrap { max-width: 400px; margin: 1rem auto 0; text-align: center; }
+        .niveau-label { font-size: 0.9rem; color: hsl(40, 20%, 70%); margin-bottom: 0.3rem; }
+        .niveau-bar {
+            height: 1rem; background-color: hsl(0, 0%, 30%);
+            border-radius: 0.5rem; overflow: hidden;
+        }
+        .niveau-fill {
+            height: 100%; width: 0%; border-radius: 0.5rem;
+            transition: width 0.4s ease, background-color 0.4s ease;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="playback-grid">
+        <a href="/find_instrument"><b>Nochmal</b></a>
+        <a href="/"><b>Menü</b></a>
+    </div>
+
+    <div id="completionMessage" class="completion-message">
+        <p id="completionText"></p>
+        <p>Klicke auf <a id="msgRetry" href="/find_instrument">nochmal</a> oder <a href="/">Menü</a>.</p>
+    </div>
+
+    <div class="target">
+        <h2>Welcher Spieler spielt dieses Instrument?</h2>
+        <div class="target-name">{{ target }}</div>
+        {% if target_image %}
+        <img src="{{ url_for('static', filename='instruments/' + target_image) }}" alt="{{ target }}">
+        {% endif %}
+    </div>
+
+    <div class="niveau-wrap">
+        <div class="niveau-label">
+            Niveau <span id="niveauValue"></span> · Runde <span id="runValue"></span>
+        </div>
+        <div class="niveau-bar"><div class="niveau-fill" id="niveauFill"></div></div>
+    </div>
+
+    <div class="option-grid">
+        {% for option in options %}
+        <div class="option-card" data-correct="{{ 'yes' if option.is_correct else 'no' }}">
+            <div class="player-number">Spieler {{ loop.index }}</div>
+
+            <button type="button" class="play-btn"
+                    data-index="{{ loop.index0 }}"
+                    onclick="togglePlay({{ loop.index0 }})">▶</button>
+
+            <audio id="audio_{{ loop.index0 }}" loop preload="auto"
+                   src="{{ url_for('static', filename='music/' + option.genre + '/' + option.nickname + '_' + option.instrument + '.mp3') }}"></audio>
+
+            <button type="button" class="select-btn" onclick="choose(this)">Das ist es!</button>
+
+            <div class="reveal" style="display:none;">
+                {% if option.image %}
+                <img src="{{ url_for('static', filename='instruments/' + option.image) }}" alt="{{ option.instrument }}">
+                {% endif %}
+                <div class="reveal-name">{{ option.instrument }}</div>
+            </div>
+
+            <span class="marker"></span>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        // Niveau anpassen
+        let niveau = {{ niveau }};
+        let run = {{ run }};
+        const NIVEAU_STEP = {{ niveau_step }};
+
+        function renderNiveau(v) {
+            v = Math.max(0, Math.min(1, v));
+            const fill = document.getElementById('niveauFill');
+            fill.style.width = (v * 100) + '%';
+            fill.style.backgroundColor = `hsl(${120 - 120 * v}, 55%, 48%)`; // grün -> rot
+            document.getElementById('niveauValue').textContent = Math.round(v * 100) + '%';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderNiveau(niveau);
+            document.getElementById('runValue').textContent = run;
+        });
+
+
+
+
+
+
+        // Audio Abkürzen bei Stille
+        const audios = Array.from(document.querySelectorAll('audio'));
+        let answered = false;
+
+        function resetBtn(idx) {
+            const b = document.querySelector('.play-btn[data-index="' + idx + '"]');
+            if (b) b.textContent = '▶';
+        }
+
+        function togglePlay(i) {
+            const audio = document.getElementById('audio_' + i);
+            const btn = document.querySelector('.play-btn[data-index="' + i + '"]');
+            if (audio.paused) {
+                // Only one player at a time
+                audios.forEach((a, idx) => {
+                    if (a !== audio) { a.pause(); resetBtn(idx); }
+                });
+                audio.play();
+                btn.textContent = '⏸';
+            } else {
+                audio.pause();
+                btn.textContent = '▶';
+            }
+        }
+
+        function choose(selectBtn) {
+            if (answered) return;
+            answered = true;
+
+            const card = selectBtn.closest('.option-card');
+            const isCorrect = card.dataset.correct === 'yes';
+
+            // Niveau anpassen: richtig -> schwerer, falsch -> leichter; früh schneller (sqrt(run))
+            const delta = NIVEAU_STEP / Math.sqrt(run);
+            niveau = Math.max(0, Math.min(1, niveau + (isCorrect ? delta : -delta)));
+            renderNiveau(niveau);
+            const nextUrl = `/find_instrument?niveau=${niveau.toFixed(4)}&run=${run + 1}`;
+
+            document.querySelectorAll('.option-card').forEach(c => {
+                c.querySelector('.reveal').style.display = 'block';
+                if (c.dataset.correct === 'yes') c.classList.add('is-correct');
+
+                const btn = c.querySelector('.select-btn');
+                btn.textContent = 'Nochmal';
+                btn.disabled = false;
+                btn.onclick = () => { window.location.replace(nextUrl); };
+            });
+
+            const retry = document.getElementById('msgRetry');
+            if (retry) retry.href = nextUrl;
+
+            const marker = card.querySelector('.marker');
+            marker.style.display = 'block';
+
+            const msg = document.getElementById('completionMessage');
+            const msgText = document.getElementById('completionText');
+
+            if (isCorrect) {
+                marker.textContent = '\u2714\uFE0E';
+                marker.style.color = '#0f0';
+                msg.classList.remove('wrong');
+                msgText.textContent = 'Richtig! Das war das gesuchte Instrument.';
+            } else {
+                marker.textContent = '\u274C\uFE0E';
+                marker.style.color = 'red';
+                card.classList.add('is-wrong');
+                msg.classList.add('wrong');
+                msgText.textContent = 'Leider falsch – der grün umrandete Spieler war richtig.';
+            }
+            msg.style.display = 'block';
+        }
+
+
+
+        // Einmalige Stille-Analyse pro Datei -> Liste lauter Bereiche [start, end] in Sekunden
+const analysisCtx = new (window.AudioContext || window.webkitAudioContext)();
+const loudRegions = {};   // index -> [[start,end], ...] oder null
+
+async function computeLoudRegions(i, url) {
+    try {
+        const arr = await (await fetch(url)).arrayBuffer();
+        const buf = await analysisCtx.decodeAudioData(arr);
+        const data = buf.getChannelData(0);
+        const sr = buf.sampleRate;
+
+        const winSize   = Math.floor(sr * 0.02); // 20 ms Fenster
+        const threshold = 0.01;                  // RMS-Schwelle für "laut" (ggf. anpassen)
+        const minSilence = 0.4;                  // Pausen kürzer als das nicht überspringen (s)
+        const pad = 0.05;                        // etwas Rand um laute Stellen (s)
+
+        // 1) jedes Fenster als laut/leise klassifizieren
+        const loudWin = [];
+        for (let start = 0; start < data.length; start += winSize) {
+            const end = Math.min(start + winSize, data.length);
+            let sum = 0;
+            for (let j = start; j < end; j++) sum += data[j] * data[j];
+            loudWin.push(Math.sqrt(sum / (end - start)) >= threshold);
+        }
+
+        // 2) laute Bereiche in Sekunden zusammensetzen
+        const winDur = winSize / sr;
+        const regions = [];
+        let regionStart = null;
+        for (let w = 0; w < loudWin.length; w++) {
+            if (loudWin[w] && regionStart === null) regionStart = w * winDur;
+            if (!loudWin[w] && regionStart !== null) {
+                regions.push([regionStart, w * winDur]);
+                regionStart = null;
+            }
+        }
+        if (regionStart !== null) regions.push([regionStart, buf.duration]);
+
+        // 3) kurze Pausen überbrücken + Rand anwenden
+        const merged = [];
+        for (let [s, e] of regions) {
+            s = Math.max(0, s - pad);
+            e = Math.min(buf.duration, e + pad);
+            if (merged.length && s - merged[merged.length - 1][1] < minSilence) {
+                merged[merged.length - 1][1] = e;
+            } else {
+                merged.push([s, e]);
+            }
+        }
+        loudRegions[i] = merged;
+    } catch (err) {
+        console.warn('Stille-Analyse fehlgeschlagen für', url, err);
+        loudRegions[i] = null; // Fallback: ganz normal abspielen
+    }
+}
+
+// Analyse für alle vier Spieler starten
+audios.forEach((a, i) => computeLoudRegions(i, a.getAttribute('src')));
+
+// Während der Wiedergabe stille Stellen überspringen
+audios.forEach((audio, i) => {
+    audio.addEventListener('timeupdate', () => {
+        const regions = loudRegions[i];
+        if (!regions || regions.length === 0) return;
+        const t = audio.currentTime;
+
+        // In einem lauten Bereich? Dann nichts tun.
+        for (const [s, e] of regions) {
+            if (t >= s && t <= e) return;
+        }
+        // Sonst zur nächsten lauten Stelle springen (bzw. zurück zur ersten)
+        const next = regions.find(([s]) => s > t);
+        audio.currentTime = next ? next[0] : regions[0][0];
+    });
+});
+    </script>
+
+</body>
+</html>

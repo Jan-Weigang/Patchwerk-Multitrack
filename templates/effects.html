@@ -63,6 +63,12 @@
         .playback-grid button:active {
             border-style: inset;
         }
+        .playback-grid button:disabled {
+            opacity: 0.4;
+            cursor: wait;
+            background-color: hsl(40, 15%, 55%);
+            border-color: hsl(40, 15%, 55%);
+        }
 
         @keyframes rainbow-shadow {
             0%   { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(0, 80%, 80%)); }   /* Red */
@@ -259,7 +265,7 @@
 
 
     <div class="playback-grid" style="margin-top:4rem;">
-        <button id="playPauseButton" onclick="playAll()">▶</button>
+        <button id="playPauseButton" onclick="playAll()" disabled autocomplete="off" title="Lädt…">▶</button>
         <button onclick="stopAll()">⏹</button>
         <div id="progressBar">
             <div id="progress"></div>
@@ -345,452 +351,342 @@
 
 
     <script>
+        // Play-Button sofort deaktivieren (gegen Browser-State-Restoration beim Reload)
+        (function () {
+            var pb = document.getElementById('playPauseButton');
+            if (pb) { pb.disabled = true; pb.title = 'Lädt…'; }
+        })();
 
         var audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        var audioBuffers = {};  // Stores the decoded audio data
-        var audioSources = {};  // Stores the source nodes for playing audio
-        var gainNodes = {};
-        var effectNodes = {};
+        var tuna = new Tuna(audioContext);
 
-        var audioElements = document.querySelectorAll('audio');
+        var audioBuffers = {};   // dekodierte Buffer je Instrument
+        var sourceNodes  = {};   // aktuell laufende BufferSources (kurzlebig, Einweg)
+        var gainNodes    = {};   // persistent
+        var analyzers    = {};   // persistent
+        var effectNodes  = {};   // persistent: { instrument: { delay, overdrive, ... } }
+
+        // Reihenfolge der Effektkette (gainNode -> ... -> analyzer)
+        var EFFECT_ORDER = ['overdrive', 'delay', 'chorus', 'wahwah', 'bitCrusher', 'lowPass', 'highPass'];
+
         var progressBar = document.getElementById('progress');
-
-        var audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        var analyzers = {};
-        var intensityData = {};
-
         var startTime = 0;
-        var audioDuration = 0; // Longest audio duration for the progress bar calculation
-
-        var isPlaying = false; // Track playback state
-        var startOffset = 0; // Offset to start playback from when resuming
-
+        var audioDuration = 0;   // längste Bufferdauer für den Fortschrittsbalken
+        var isPlaying = false;
+        var startOffset = 0;     // Wiedergabeposition beim Pausieren/Fortsetzen
 
 
+        // ---------- Laden ----------
 
-
-        
-        // Function to load an audio file and return a promise that resolves with the buffer
         function loadAudio(instrument, url) {
             return fetch(url)
                 .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok for ' + url);
-                    }
+                    if (!response.ok) throw new Error('Network response was not ok for ' + url);
                     return response.arrayBuffer();
                 })
                 .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
-                .then(decodedData => {
-                    audioBuffers[instrument] = decodedData;
-                })
-                .catch(error => {
-                    console.error('Error loading audio file:', error);
-                });
+                .then(decodedData => { audioBuffers[instrument] = decodedData; })
+                .catch(error => { console.error('Error loading audio file:', error); });
         }
 
-        // Function to initialize all audio files
         function initializeAudio() {
+            const playBtn = document.getElementById('playPauseButton');
             const loadPromises = [];
 
             document.querySelectorAll('.custom-grid-button:not(.effect)').forEach(button => {
                 const instrument = button.id.replace('btn_', '');
                 const path = button.getAttribute('data-path');
-                loadPromises.push(loadAudio(instrument, path));  // Load each instrument's audio file and store the promise
+                loadPromises.push(
+                    loadAudio(instrument, path).then(() => {
+                        // Persistente Kette erst bauen, wenn der Buffer wirklich da ist
+                        if (audioBuffers[instrument]) buildChain(instrument);
+                    })
+                );
             });
 
             Promise.all(loadPromises)
                 .then(() => {
-                    console.log('All audio files loaded successfully');
-                    // setupAudioElements();  // Call setup only after all files are loaded
+                    console.log('All audio files loaded and chains built');
+                    playBtn.disabled = false;
+                    playBtn.removeAttribute('title');
                 })
                 .catch(error => {
-                    console.error('Failed to load all audio files:', error);
+                    console.error('Failed to load/build all audio:', error);
+                    playBtn.disabled = false;   // trotzdem freigeben, damit man nicht festhängt
+                    playBtn.title = 'Einige Dateien konnten nicht geladen werden';
                 });
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeAudio();
-        });
+        document.addEventListener('DOMContentLoaded', initializeAudio);
 
-        
+
+        // ---------- Persistente Effektkette (einmal pro Instrument) ----------
+
+        function buildChain(instrument) {
+            const gainNode = audioContext.createGain();
+
+            // KERN-FIX gegen "BiquadFilterNode channel count changes":
+            // gainNode auf konstant 2 Kanäle zwingen. Mono-Buffer werden hier zu Stereo
+            // upgemixt, dadurch sehen ALLE nachgeschalteten Filter immer dieselbe
+            // Kanalzahl und wechseln sie nie -> keine Glitch-Warnung mehr.
+            gainNode.channelCount = 2;
+            gainNode.channelCountMode = 'explicit';
+            gainNode.channelInterpretation = 'speakers';
+
+            const analyzer = audioContext.createAnalyser();
+            analyzer.fftSize = 8192;
+            analyzer.smoothingTimeConstant = 1;
+
+            const fx = {
+                delay: new tuna.Delay({
+                    feedback: 0.45, delayTime: 1000, wetLevel: 0.8, dryLevel: 1,
+                    cutoff: 5000, bypass: true
+                }),
+                chorus: new tuna.Chorus({
+                    rate: 0.01, feedback: 0.4, depth: 0.7, delay: 0.05, bypass: true
+                }),
+                overdrive: new tuna.Overdrive({
+                    outputGain: -23, drive: 0.8, curveAmount: 0.979, algorithmIndex: 0, bypass: true
+                }),
+                lowPass: new tuna.Filter({
+                    frequency: 2000, Q: 1, gain: -40, filterType: 'lowpass', bypass: true
+                }),
+                highPass: new tuna.Filter({
+                    frequency: 500, Q: 1, gain: -40, filterType: 'highpass', bypass: true
+                }),
+                wahwah: new tuna.WahWah({
+                    automode: true, baseFrequency: 0.1, excursionOctaves: 3.5,
+                    sweep: 0.35, resonance: 19, sensitivity: -0.7, bypass: true
+                }),
+                bitCrusher: new tuna.Bitcrusher({
+                    bits: 5, normfreq: 0.08, bufferSize: 4096, bypass: true
+                })
+            };
+
+            // Kette verdrahten: gainNode -> Effekte (in EFFECT_ORDER) -> analyzer -> Ausgang
+            let prev = gainNode;
+            EFFECT_ORDER.forEach(name => { prev.connect(fx[name]); prev = fx[name]; });
+            prev.connect(analyzer);
+            analyzer.connect(audioContext.destination);
+
+            // Anfangszustände aus den Buttons übernehmen
+            const instrBtn = document.getElementById('btn_' + instrument);
+            gainNode.gain.value = (instrBtn && instrBtn.classList.contains('muted')) ? 0 : 1;
+
+            EFFECT_ORDER.forEach(name => {
+                const eBtn = document.getElementById('btn_' + name);
+                fx[name].bypass = eBtn ? eBtn.classList.contains('muted') : true;
+            });
+
+            gainNodes[instrument]   = gainNode;
+            analyzers[instrument]   = analyzer;
+            effectNodes[instrument] = fx;
+        }
+
+
+        // ---------- Wiedergabe ----------
 
         function playAll() {
             if (!isPlaying) {
-                if (audioContext.state === 'suspended') {
-                    audioContext.resume(); // Ensures the audio context is running
-                }
-                var currentTime = audioContext.currentTime;
-                startTime = currentTime - startOffset; // Adjust start time by the offset
-                
+                if (audioContext.state === 'suspended') audioContext.resume();
+                startTime = audioContext.currentTime - startOffset;
+
                 Object.keys(audioBuffers).forEach(instrument => {
-                    var bufferDuration = audioBuffers[instrument].duration;
-                    if (bufferDuration > audioDuration) {
-                        audioDuration = bufferDuration; // Set the longest duration for progress calculation
-                    }
-                    var button = document.getElementById('btn_' + instrument); // Get the button for the instrument
-                    var isMuted = button && button.classList.contains('muted'); // Check if the button has the 'muted' class
+                    const buffer = audioBuffers[instrument];
+                    if (!gainNodes[instrument]) return; // Kette noch nicht bereit
+                    if (buffer.duration > audioDuration) audioDuration = buffer.duration;
 
-                    if (!audioSources[instrument]) { // Only create a new source if it doesn't exist
-                        var source = audioContext.createBufferSource();
-                        source.buffer = audioBuffers[instrument];
-                        
-                        var analyzer = audioContext.createAnalyser(); // Create a new AnalyserNode for this source
-                        var gainNode = audioContext.createGain();
-
-                        var tuna = new Tuna(audioContext);
-
-
-                        // Effekte
-                        var delay = new tuna.Delay({
-                            feedback: 0.45,    //0 to 1+
-                            delayTime: 1000,    //1 to 10000 milliseconds
-                            wetLevel: 0.8,     //0 to 1+
-                            dryLevel: 1,       //0 to 1+
-                            cutoff: 5000,      //cutoff frequency of the built in lowpass-filter. 20 to 22050
-                            bypass: true
-                        });
-                        var chorus = new tuna.Chorus({
-                            rate: 0.01,         //0.01 to 8+
-                            feedback: 0.4,     //0 to 1+
-                            depth: 0.7,        //0 to 1
-                            delay: 0.05,     //0 to 1
-                            bypass: true      //true or false
-                        });
-                        var overdrive = new tuna.Overdrive({
-                            outputGain: -23,           //-42 to 0 in dB
-                            drive: 0.8,                 //0 to 1
-                            curveAmount: 0.979,           //0 to 1
-                            algorithmIndex: 0,            //0 to 5, selects one of the drive algorithms
-                            bypass: true
-                        });
-
-                        var lowPass = new tuna.Filter({
-                            frequency: 2000,         //20 to 22050
-                            Q: 1,                   //0.001 to 100
-                            gain: -40,                //-40 to 40 (in decibels)
-                            filterType: "lowpass",  //lowpass, highpass, bandpass, lowshelf, highshelf, peaking, notch, allpass
-                            bypass: true
-                        });
-
-                        var highPass = new tuna.Filter({
-                            frequency: 500,         //20 to 22050
-                            Q: 1,                   //0.001 to 100
-                            gain: -40,                //-40 to 40 (in decibels)
-                            filterType: "highpass",  //lowpass, highpass, bandpass, lowshelf, highshelf, peaking, notch, allpass
-                            bypass: true
-                        });
-
-                        var wahwah = new tuna.WahWah({
-                            automode: true,                  //true/false
-                            baseFrequency: 0.1,            //0 to 1
-                            excursionOctaves: 3.5,           //1 to 6
-                            sweep: 0.35,                     //0 to 1
-                            resonance: 19,                   //1 to 100
-                            sensitivity: -0.7,               //-1 to 1
-                            bypass: true
-                        });
-
-                        var bitCrusher = new tuna.Bitcrusher({
-                            bits: 5,          //1 to 16
-                            normfreq: 0.08,    //0 to 1
-                            bufferSize: 4096,  //256 to 16384
-                            bypass: true
-                        });
-
-
-                        source.connect(gainNode);
-                        gainNode.connect(overdrive);
-                        overdrive.connect(delay);
-                        delay.connect(chorus);
-                        chorus.connect(wahwah);
-                        wahwah.connect(bitCrusher);
-                        bitCrusher.connect(lowPass);
-                        lowPass.connect(highPass);
-                        highPass.connect(analyzer);
-                        analyzer.connect(audioContext.destination);
-
-
-                        // store data
-                        audioSources[instrument] = source;
-                        analyzers[instrument] = analyzer; 
-                        gainNodes[instrument] = gainNode; 
-                        effectNodes[instrument] = {
-                            'delay': delay,
-                            'overdrive': overdrive,
-                            'chorus': chorus,
-                            'lowPass': lowPass,
-                            'highPass': highPass,
-                            'wahwah': wahwah,
-                            'bitCrusher': bitCrusher
-                        };
-
-                        // Set the initial mute state based on the button class
-                        gainNode.gain.value = isMuted ? 0 : 1;
-                        
-                        // Set initial effect stat based on buttons
-                        Object.keys(effectNodes[instrument]).forEach(effectName => {
-                            var button = document.getElementById('btn_' + effectName);
-                            var isCurrentlyMuted = button.classList.contains('muted');
-
-                            if (!isCurrentlyMuted) {
-                                effectNodes[instrument][effectName].bypass = false;
-                            } 
-                        });
-                        
-
-                        // Configure the analyzer if necessary
-                        analyzer.fftSize = 8192;
-                        analyzer.smoothingTimeConstant = 1;
-
-                        source.onended = () => {
-                            // clean up
-                            audioSources[instrument] = null;
-                            analyzers[instrument] = null;  
-                            gainNodes[instrument] = null;
-                            effectNodes[instrument] = null;
-                        };
-                    }
-                    audioSources[instrument].start(0, startOffset % audioBuffers[instrument].duration); // Start from the last offset
+                    // Nur der Source-Node ist Einweg und wird jedes Mal neu erzeugt;
+                    // die Effektkette dahinter bleibt bestehen.
+                    const source = audioContext.createBufferSource();
+                    source.buffer = buffer;
+                    source.connect(gainNodes[instrument]);
+                    source.onended = () => {
+                        try { source.disconnect(); } catch (e) {}
+                        if (sourceNodes[instrument] === source) sourceNodes[instrument] = null;
+                    };
+                    sourceNodes[instrument] = source;
+                    source.start(0, startOffset % buffer.duration);
                 });
 
                 isPlaying = true;
-                updateProgress(); // Start updating the progress bar
+                updateProgress();
                 requestAnimationFrame(updateIntensities);
             } else {
-                pauseAll(); // If playing, then stop all sources
+                pauseAll();
             }
             updatePlayer();
         }
 
-        function pauseAll() {
-            var currentTime = audioContext.currentTime;
-            startOffset = currentTime - startTime; // Update startOffset to maintain the pause position
-
-            Object.keys(audioSources).forEach(instrument => {
-                if (audioSources[instrument]) {
-                    audioSources[instrument].stop();
-                    audioSources[instrument] = null;
+        function stopSources() {
+            Object.keys(sourceNodes).forEach(instrument => {
+                const s = sourceNodes[instrument];
+                if (s) {
+                    try { s.onended = null; s.stop(); } catch (e) {}
+                    try { s.disconnect(); } catch (e) {}
+                    sourceNodes[instrument] = null;
                 }
             });
+        }
 
+        function pauseAll() {
+            startOffset = audioContext.currentTime - startTime;
+            stopSources();
             isPlaying = false;
             stopAnimation(startOffset);
             updatePlayer();
         }
 
         function stopAll() {
+            stopSources();
             startOffset = 0;
-            Object.keys(audioSources).forEach(instrument => {
-                if (audioSources[instrument]) {
-                    audioSources[instrument].stop();
-                    audioSources[instrument] = null;
-                }
-            });
-
             isPlaying = false;
-            stopAnimation(startOffset);
+            stopAnimation(0);
             updatePlayer();
         }
 
         function updatePlayer() {
-            // Update button text accordingly
-            const button = document.getElementById('playPauseButton');
-            button.textContent = isPlaying ? '⏸' : '▶';
+            document.getElementById('playPauseButton').textContent = isPlaying ? '⏸' : '▶';
         }
 
-        function stopAnimation(elapsed)  {
-            percentage = getProgressPercentage(elapsed);
-            progressBar.style.width = percentage + '%'; // Reset progress bar after completion
-            cancelAnimationFrame(progressAnimationFrame); // Stop the progress update loop
-            cancelAnimationFrame(updateIntensityFrame); 
-            resetIntensities();
-        }
 
+        // ---------- Mute (exklusiv: nur ein Instrument hörbar) ----------
+
+        function setGain(node, value) {
+            // kleiner Ramp statt harter Sprung -> keine Knackser beim Umschalten
+            const now = audioContext.currentTime;
+            node.gain.cancelScheduledValues(now);
+            node.gain.setValueAtTime(node.gain.value, now);
+            node.gain.linearRampToValueAtTime(value, now + 0.02);
+        }
 
         function toggleMute(selectedInstrument) {
-            // Reference to the button controlling the mute state
-            var button = document.getElementById('btn_' + selectedInstrument);
-            
-            // Determine the muted state based on the presence of the 'muted' class on the button
-            var isCurrentlyMuted = button.classList.contains('muted');
+            const button = document.getElementById('btn_' + selectedInstrument);
+            const wasMuted = button.classList.contains('muted');
 
-            // Get all instrument buttons
-            var allButtons = document.querySelectorAll('[id^="btn_"]:not(.effect)'); // Selects all buttons starting with 'btn_'
-
-            // Loop through all buttons to mute them
-            allButtons.forEach(function(btn) {
-                var instrument = btn.id.replace('btn_', ''); // Get the instrument name from the button id
-                if (audioSources[instrument]) {
-                    gainNodes[instrument].gain.value = 0; // Mute the audio
-                }
-                btn.classList.add('muted'); // Add 'muted' class to all buttons
+            // Erst alle Instrumente stummschalten
+            document.querySelectorAll('[id^="btn_"]:not(.effect)').forEach(function (btn) {
+                const instrument = btn.id.replace('btn_', '');
+                if (gainNodes[instrument]) setGain(gainNodes[instrument], 0);
+                btn.classList.add('muted');
             });
 
-            // If the selected instrument was originally muted, unmute it
-            if (isCurrentlyMuted) {
-                if (audioSources[selectedInstrument]) {
-                    gainNodes[selectedInstrument].gain.value = 1; // Unmute the audio
-                    audioSources[selectedInstrument].muted = false;
-                }
-                button.classList.remove('muted'); // Remove 'muted' class from the selected button
+            // War das gewählte vorher stumm -> jetzt als einziges hörbar machen
+            if (wasMuted) {
+                if (gainNodes[selectedInstrument]) setGain(gainNodes[selectedInstrument], 1);
+                button.classList.remove('muted');
             }
+            // (War es vorher aktiv, bleibt jetzt alles stumm = Ausschalten)
 
-            // Toggle the 'muted' class on the button to reflect the new state
-            button.classList.toggle('muted', !isCurrentlyMuted);
             resetIntensitiy(button);
         }
 
-        function toggleEffect(effect) {
-            // Reference to the button controlling the mute state
-            var button = document.getElementById('btn_' + effect);
-            
-            // Determine the muted state based on the presence of the 'muted' class on the button
-            var isCurrentlyMuted = button.classList.contains('muted');
-            if (!isCurrentlyMuted) {
-                Object.keys(audioSources).forEach(instrument => {
-                    effects = effectNodes[instrument];
-                    console.log("effects: " + effects);
-                    effects[effect].bypass = true;
-                });
-            } else {
-                Object.keys(audioSources).forEach(instrument => {
-                    effects = effectNodes[instrument];
-                    console.log("effects: " + effects);
-                    effects[effect].bypass = false;
-                });
-            }
 
-            // Toggle the 'muted' class on the button to reflect the new state
-            button.classList.toggle('muted', !isCurrentlyMuted);
+        // ---------- Effekte an/aus (bypass) ----------
+
+        function toggleEffect(effect) {
+            const button = document.getElementById('btn_' + effect);
+            const wasMuted = button.classList.contains('muted');
+            // wasMuted (Effekt aus) -> anschalten (bypass false); sonst ausschalten (bypass true)
+            const newBypass = wasMuted ? false : true;
+
+            Object.keys(effectNodes).forEach(instrument => {
+                const fx = effectNodes[instrument];
+                if (fx && fx[effect]) fx[effect].bypass = newBypass;
+            });
+
+            button.classList.toggle('muted', !wasMuted);
         }
+
+
+        // ---------- Fortschritt ----------
 
         function getProgressPercentage(elapsed) {
-            var percentage = (elapsed / audioDuration) * 100;
-            percentage = Math.min(100, percentage);
-            return percentage;
+            return Math.min(100, (elapsed / audioDuration) * 100);
         }
-
 
         var progressAnimationFrame;
 
         function updateProgress() {
             if (audioContext.state !== 'running') {
-                console.log("Waiting for AudioContext to be in running state...");
-                return requestAnimationFrame(updateProgress); // Try updating progress again on the next frame
+                return requestAnimationFrame(updateProgress);
             }
-            var elapsed = audioContext.currentTime - startTime;
-            percentage = getProgressPercentage(elapsed);
+            const elapsed = audioContext.currentTime - startTime;
+            if (progressBar) progressBar.style.width = getProgressPercentage(elapsed) + '%';
 
-            var progressBar = document.getElementById('progress');
-            if (progressBar) {
-                progressBar.style.width = percentage + '%';
-            }
-
-            // Continue updating until the track is over
             if (elapsed < audioDuration) {
                 progressAnimationFrame = requestAnimationFrame(updateProgress);
             } else {
-                stopAnimation(0);
+                stopAll(); // Ende erreicht -> sauber zurücksetzen
             }
         }
 
+        function stopAnimation(elapsed) {
+            if (progressBar) progressBar.style.width = getProgressPercentage(elapsed) + '%';
+            cancelAnimationFrame(progressAnimationFrame);
+            cancelAnimationFrame(updateIntensityFrame);
+            resetIntensities();
+        }
 
 
+        // ---------- Intensitäts-Visualisierung ----------
 
         var updateIntensityFrame;
 
         function updateIntensities() {
-            Object.keys(analyzers).forEach(id => {
-                
-                var analyzer = analyzers[id];
-                if (audioSources[id].muted) {
-                    // Skip updating this instrument if muted
-                    return;
-                }
+            Object.keys(analyzers).forEach(instrument => {
+                const btn = document.getElementById('btn_' + instrument);
+                const muted = !btn || btn.classList.contains('muted');
+                if (muted) return; // nur das hörbare Instrument animieren
 
-                var dataArray = new Uint8Array(analyzer.fftSize); // Create an array to hold the waveform data
-                analyzer.getByteTimeDomainData(dataArray); // Get waveform data
+                const analyzer = analyzers[instrument];
+                const dataArray = new Uint8Array(analyzer.fftSize);
+                analyzer.getByteTimeDomainData(dataArray);
 
-                // Calculate average volume from the waveform data
                 let sum = 0;
                 for (let i = 0; i < dataArray.length; i++) {
-                    let x = (dataArray[i] / 128.0) - 1; // Normalize the data (Uint8Array values are from 0 to 255, we normalize them to -1 to +1)
-                    sum += x * x; // Sum the squares of each normalized sample
+                    const x = (dataArray[i] / 128.0) - 1;
+                    sum += x * x;
                 }
-                let rms = Math.sqrt(sum / dataArray.length); // Calculate the root mean square (RMS) of the samples
-                let volume = rms * 100; // Scale it up for better visualization (not a dB value)
-                
-                // Calculate visual parameters based on average intensity
-                var intensityShadow = Math.min(5, volume / 10); // Scale shadow intensity
-                var saturationLevel = Math.min(150, 20 + volume * 10); // Scale saturation from 50% to 100%
+                const rms = Math.sqrt(sum / dataArray.length);
+                const volume = rms * 100;
 
-                // Update the button shadow and image saturation
-                var button = document.getElementById('btn_' + id.replace('audio_', ''));
-                var imageElement = document.getElementById('img_' + id.replace('audio_', ''));
-                if (button) {
-                    button.style.setProperty('--shadow-intensity', `${intensityShadow}rem`);
-                }
-                if (imageElement) {
-                    imageElement.style.filter = `saturate(${saturationLevel}%)`;
-                }
+                const intensityShadow = Math.min(5, volume / 10);
+                const saturationLevel = Math.min(150, 20 + volume * 10);
+
+                const button = document.getElementById('btn_' + instrument);
+                const imageElement = document.getElementById('img_' + instrument);
+                if (button) button.style.setProperty('--shadow-intensity', `${intensityShadow}rem`);
+                if (imageElement) imageElement.style.filter = `saturate(${saturationLevel}%)`;
             });
 
-            // Use requestAnimationFrame for a smooth animation loop
             updateIntensityFrame = requestAnimationFrame(updateIntensities);
         }
 
         function resetIntensities() {
-            // Select all buttons by a common class or attribute if they're dynamically generated
-            // Here assuming buttons have a common class or can be selected by a part of their id that includes 'btn_'
             document.querySelectorAll('[id^="btn_"]').forEach(button => {
-                // Extract the instrument identifier from the button id if necessary
-                // Assuming id format is 'btn_instrumentName'
-                let instrument = button.id.replace('btn_', '');
-
-                // Reset the shadow intensity
+                const instrument = button.id.replace('btn_', '');
                 button.style.setProperty('--shadow-intensity', `0rem`);
-
-                // Find the corresponding image element and reset its saturation
-                let imageElement = document.getElementById('img_' + instrument);
-                if (imageElement) {
-                    imageElement.style.filter = `saturate(80%)`;  // Setting saturation to a default level
-                }
+                const imageElement = document.getElementById('img_' + instrument);
+                if (imageElement) imageElement.style.filter = `saturate(80%)`;
             });
         }
 
         function resetIntensitiy(button) {
-            let instrument = button.id.replace('btn_', '');
-
-            // Reset the shadow intensity
+            const instrument = button.id.replace('btn_', '');
             button.style.setProperty('--shadow-intensity', `0rem`);
-
-            // Find the corresponding image element and reset its saturation
-            let imageElement = document.getElementById('img_' + instrument);
-            if (imageElement) {
-                imageElement.style.filter = `saturate(80%)`;  // Setting saturation to a default level
-            }
-
+            const imageElement = document.getElementById('img_' + instrument);
+            if (imageElement) imageElement.style.filter = `saturate(80%)`;
         }
 
 
+        // ---------- Hilfe-Text ----------
 
         function toggleText() {
-            // Get all <h4> elements inside .custom-grid-button
-            const headers = document.querySelectorAll('.custom-grid-button h4');
-
-            // Toggle the display style for each <h4>
-            headers.forEach(header => {
-                if (header.style.display === 'none') {
-                    header.style.display = 'block'; // Show text
-                } else {
-                    header.style.display = 'none'; // Hide text
-                }
+            document.querySelectorAll('.custom-grid-button h4').forEach(header => {
+                header.style.display = (header.style.display === 'none') ? 'block' : 'none';
             });
         }
-
-
-       
-
     </script>
 </body>
 </html>

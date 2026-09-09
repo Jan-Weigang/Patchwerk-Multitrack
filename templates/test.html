@@ -61,6 +61,13 @@
             border-style: inset;
         }
 
+        .playback-grid button:disabled {
+            opacity: 0.4;
+            cursor: wait;
+            background-color: hsl(40, 15%, 55%);
+            border-color: hsl(40, 15%, 55%);
+        }
+
         @keyframes rainbow-shadow {
             0%   { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(0, 80%, 80%)); }   /* Red */
             15%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(30, 80%, 80%)); }  /* Orange */
@@ -255,7 +262,7 @@
 
     
     <div class="playback-grid" style="margin-top:4rem;">
-        <button id="playPauseButton" onclick="playAll()">▶</button>
+        <button id="playPauseButton" onclick="playAll()" disabled title="lädt..." disabled autocomplete="off">▶</button>
         <button onclick="stopAll()">⏹</button>
         <div id="progressBar">
             <div id="progress"></div>
@@ -317,6 +324,15 @@
 
     <script>
 
+        // Sofort deaktivieren – gegen Browser-State-Restoration beim Reload
+        (function () {
+            const playBtn = document.getElementById('playPauseButton');
+            if (playBtn) {
+                playBtn.disabled = true;
+                playBtn.title = 'Lädt…';
+            }
+        })();
+
         var audioContext = new (window.AudioContext || window.webkitAudioContext)();
         var audioBuffers = {};  // Stores the decoded audio data
         var audioSources = {};  // Stores the source nodes for playing audio
@@ -334,6 +350,7 @@
 
         var isPlaying = false; // Track playback state
         var startOffset = 0; // Offset to start playback from when resuming
+        var silenceOffset = 0;
 
 
         
@@ -372,10 +389,16 @@
             Promise.all(loadPromises)
                 .then(() => {
                     console.log('All audio files loaded successfully');
+                    const playBtn = document.getElementById('playPauseButton');
+                    playBtn.disabled = false;
+                    playBtn.removeAttribute('title');
                     // setupAudioElements();  // Call setup only after all files are loaded
                 })
                 .catch(error => {
                     console.error('Failed to load all audio files:', error);
+                    const playBtn = document.getElementById('playPauseButton');
+                    playBtn.disabled = false;   // trotzdem freigeben, sonst hängt man fest
+                    playBtn.title = 'Einige Dateien konnten nicht geladen werden';
                 });
         }
 
@@ -464,7 +487,7 @@
         }
 
         function stopAll() {
-            startOffset = 0;
+            startOffset = silenceOffset;
             Object.keys(audioSources).forEach(instrument => {
                 if (audioSources[instrument]) {
                     audioSources[instrument].stop();
@@ -635,12 +658,99 @@
 
         function get_difficulty() {
             const test_div = document.getElementById('hard-difficulty');
-            console.log(test_div);
             if (test_div) {
                 return 'hard'
             }
             return 'easy'
         }
+
+
+
+        const analysisCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const loudRegions = {};
+
+        // Stille am STart überspringen
+        const IS_EINZEL = {{ 'true' if difficulty == 'einzel' else 'false' }};
+
+        async function computeLoudRegions(i, url) {
+            try {
+                const arr = await (await fetch(url)).arrayBuffer();
+                const buf = await analysisCtx.decodeAudioData(arr);
+                const data = buf.getChannelData(0);
+                const sr = buf.sampleRate;
+
+                const winSize   = Math.floor(sr * 0.02); // 20 ms Fenster
+                const threshold = 0.01;                  // RMS-Schwelle für "laut" (ggf. anpassen)
+                const minSilence = 0.4;                  // Pausen kürzer als das nicht überspringen (s)
+                const pad = 0.05;                        // etwas Rand um laute Stellen (s)
+
+                // 1) jedes Fenster als laut/leise klassifizieren
+                const loudWin = [];
+                for (let start = 0; start < data.length; start += winSize) {
+                    const end = Math.min(start + winSize, data.length);
+                    let sum = 0;
+                    for (let j = start; j < end; j++) sum += data[j] * data[j];
+                    loudWin.push(Math.sqrt(sum / (end - start)) >= threshold);
+                }
+
+                // 2) laute Bereiche in Sekunden zusammensetzen
+                const winDur = winSize / sr;
+                const regions = [];
+                let regionStart = null;
+                for (let w = 0; w < loudWin.length; w++) {
+                    if (loudWin[w] && regionStart === null) regionStart = w * winDur;
+                    if (!loudWin[w] && regionStart !== null) {
+                        regions.push([regionStart, w * winDur]);
+                        regionStart = null;
+                    }
+                }
+                if (regionStart !== null) regions.push([regionStart, buf.duration]);
+
+                // 3) kurze Pausen überbrücken + Rand anwenden
+                const merged = [];
+                for (let [s, e] of regions) {
+                    s = Math.max(0, s - pad);
+                    e = Math.min(buf.duration, e + pad);
+                    if (merged.length && s - merged[merged.length - 1][1] < minSilence) {
+                        merged[merged.length - 1][1] = e;
+                    } else {
+                        merged.push([s, e]);
+                    }
+                }
+                loudRegions[i] = merged;
+            } catch (err) {
+                console.warn('Stille-Analyse fehlgeschlagen für', url, err);
+                loudRegions[i] = null; // Fallback: ganz normal abspielen
+            }
+        }
+
+        async function computeStartOffset() {
+            if (!IS_EINZEL) return;
+
+            const buttons = document.querySelectorAll('.custom-grid-button[data-type="original"]');
+            const firstLouds = [];
+
+            for (const button of buttons) {
+                const path = button.getAttribute('data-path');
+                if (!path) continue;
+                const i = button.id.replace('btn_', '');
+                await computeLoudRegions(i, path);   // füllt loudRegions[i]
+                const regions = loudRegions[i];
+                if (regions && regions.length) firstLouds.push(regions[0][0]);
+            }
+
+            // Frühester Einsatz über alle Originalspuren = Startpunkt (kleiner Sicherheitsabstand)
+            if (firstLouds.length) {
+                silenceOffset = Math.max(0, Math.min(...firstLouds) - 0.1);
+                startOffset = silenceOffset;   // für den allerersten Play
+                console.log('Einzeltest: Silence-Offset =', silenceOffset.toFixed(2), 's');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeAudio();
+            computeStartOffset();
+        });
     </script>
 
 

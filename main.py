@@ -124,44 +124,60 @@ def is_too_similar(instrument, existing_instruments):
         print(f"I just checked {instrument} vs {existing_instruments} and it is not too similar")
     return False
 
+
+# Neu, beachtet Familiennähe
 def add_random_instruments(original_instruments: list, amount: int):
-    # # Get a flat list of all possible instruments, excluding those too similar to existing ones
-    # all_possible_instruments = [
-    #     instr for subdict in music_files.values()
-    #     for nick in subdict.values()
-    #     for instr in nick.get('instruments', [])
-    #     if not is_too_similar(instr, original_instruments)
-    # ]
-
-    # First, gather all possible instruments into a list without filtering
-    all_possible_instruments = [
-        instr for subdict in music_files.values()
-        for nick in subdict.values()
-        for instr in nick.get('instruments', [])
-    ]
-
-    # Convert list to set to remove duplicates
-    unique_possible_instruments = set(all_possible_instruments)
-
-    # Filter out instruments that are too similar to the original ones
-    filtered_possible_instruments = [
-        instr for instr in unique_possible_instruments
-        if not is_too_similar(instr, original_instruments)
-    ]
-
-    # Randomly pick 4 additional instruments that are not too similar
-    random_instruments = random.sample(filtered_possible_instruments, min(amount, len(filtered_possible_instruments)))
+    random_instruments = pick_weighted_instrument_names(
+        original_instruments, amount, exclude=original_instruments
+    )
     if debug:
-        print(f"picked random instruments: {random_instruments} from max of {len(filtered_possible_instruments)}")
+        print(f"gewichtet gewählt: {random_instruments}")
+    combined = list(set(original_instruments + random_instruments))
+    return sort_instruments(combined)
 
-    # Combine and sort instruments
-    combined_instruments = list(set(original_instruments + random_instruments))
-    sorted_instruments = sort_instruments(combined_instruments)
-    return sorted_instruments
+# def add_random_instruments(original_instruments: list, amount: int):
+#     # # Get a flat list of all possible instruments, excluding those too similar to existing ones
+#     # all_possible_instruments = [
+#     #     instr for subdict in music_files.values()
+#     #     for nick in subdict.values()
+#     #     for instr in nick.get('instruments', [])
+#     #     if not is_too_similar(instr, original_instruments)
+#     # ]
+
+#     # First, gather all possible instruments into a list without filtering
+#     all_possible_instruments = [
+#         instr for subdict in music_files.values()
+#         for nick in subdict.values()
+#         for instr in nick.get('instruments', [])
+#     ]
+
+#     # Convert list to set to remove duplicates
+#     unique_possible_instruments = set(all_possible_instruments)
+
+#     # Filter out instruments that are too similar to the original ones
+#     filtered_possible_instruments = [
+#         instr for instr in unique_possible_instruments
+#         if not is_too_similar(instr, original_instruments)
+#     ]
+
+#     # Randomly pick 4 additional instruments that are not too similar
+#     random_instruments = random.sample(filtered_possible_instruments, min(amount, len(filtered_possible_instruments)))
+#     if debug:
+#         print(f"picked random instruments: {random_instruments} from max of {len(filtered_possible_instruments)}")
+
+#     # Combine and sort instruments
+#     combined_instruments = list(set(original_instruments + random_instruments))
+#     sorted_instruments = sort_instruments(combined_instruments)
+#     return sorted_instruments
 
 
 
-def get_instrument_data(instruments, original_instruments=[]):
+def get_instrument_data(instruments, original_instruments=None):
+    if original_instruments is None:
+        original_instruments = []
+    elif isinstance(original_instruments, str):
+        original_instruments = [original_instruments]
+
     instrument_data = {
         instr: {
             'image': image_exists(f"{instr}"),
@@ -172,6 +188,8 @@ def get_instrument_data(instruments, original_instruments=[]):
     }
     return instrument_data
 
+def _family_members(groups):
+    return [instr for group in groups for instr in group]
 
 
 
@@ -180,18 +198,137 @@ def get_instrument_data(instruments, original_instruments=[]):
 app = Flask(__name__)
 debug = False
 # Define the preferred order of instruments
-app.config['INSTRUMENT_ORDER'] = ['Vocals', 'VintageVocals', 'BackingVocals', 'Wispern', 'Hall',
-                                  'Trompete', 'Trompeten', 'Saxofone', 'Saxofon', 'Posaunen', 'Posaune', 'Bläsersatz', 'Blechbläser', 
-                                  'Klarinette', 'Klarinetten', 'Holzbläser', 
-                                  'Streicher', 'Violinen', 'Violine', 'Bratschen', 'Bratsche', 'Celli', 'Cello', 'Kontrabass', 'Kontrabässe',
-                                  'MelodieSynth', 'Solo-E-Gitarre', 
-                                  'MelodieSchlagwerk', 'Schlagwerk',
-                                  'Piano', 'StagePiano', 'Rhodes', 'HammondOrgel', 'Keyboard', 'Synth', 'BackgroundSynth', 
-                                  'E-Gitarre', 'Gitarren-Amp', 'Gitarre', 'E-Bass', 'Bass-Amp', 'SynthBass', 'Jazz-Kontrabass', 
-                                  'Percussion', 'Cabasa', 'Maracas', 
-                                  'E-Drums', 'Drumset', 'Drums', 'VintageDrums', 
-                                  'HiHat', 'Claps', 'SnareDrum', 'KickDrum', 
-                                  'Hall-Effekt', 'Effekte']
+INSTRUMENT_FAMILIES = {
+    'Gesang':      [['Vocals'], ['Sopran'], ['Alt'], ['Tenor'], ['Bass'],
+                    ['VintageVocals'], ['BackingVocals'], ['Wispern']],
+    'Holzbläser':  [['Querflöte', 'Querflöten', 'Flöten'], ['Klarinette', 'Klarinetten'],
+                    ['Oboe'], ['Fagott'], ['Holzbläser'], ['Saxophon', 'Saxophone'], ['Sopransaxophon'],['Altsaxophon'], ['Tenorsaxophon'], ['Baritonsaxophon']],
+    'Blechbläser': [['Trompete', 'Trompeten'], ['Posaune', 'Posaunen'], ['Horn', 'Hörner'],
+                    ['Tuba'], ['Bläsersatz'], ['Blechbläser']],
+    'Streicher':   [['Streicher'], ['Violine', 'Violinen'],
+                    ['Viola', 'Violas', 'Bratsche', 'Bratschen'], ['Cello', 'Celli'],
+                    ['Kontrabass', 'Kontrabässe'], ['Jazz-Kontrabass']],
+    'Tasten':      [['Piano'], ['StagePiano'], ['Rhodes'], ['HammondOrgel'], ['Keyboard']],
+    'Synth':       [['MelodieSynth', 'Synth', 'BackgroundSynth'], ['SynthBass']],
+    'Gitarre':     [['Solo-E-Gitarre', 'E-Gitarre', 'Gitarren-Amp'], ['Gitarre']],
+    'Bass':        [['E-Bass', 'Bass-Amp']],
+    'Percussion':  [['MelodieSchlagwerk'], ['Schlagwerk', 'Percussion', 'Cabasa', 'Maracas']],
+    'Drums':       [['E-Drums', 'Drumset', 'Drums', 'VintageDrums'],
+                    ['HiHat'], ['Claps'], ['SnareDrum'], ['KickDrum']],
+    'Effekte':     [['Hall', 'Hall-Effekt'], ['Effekte']],
+}
+
+# Lookups
+FAMILY_INDEX = {fam: i for i, fam in enumerate(INSTRUMENT_FAMILIES)}
+INSTRUMENT_TO_FAMILY = {
+    instr: fam
+    for fam, groups in INSTRUMENT_FAMILIES.items()
+    for instr in _family_members(groups)
+}
+# Äquivalenzgruppe pro Instrument (aus den inneren Listen)
+INSTRUMENT_TO_EQUIV = {}
+for groups in INSTRUMENT_FAMILIES.values():
+    for group in groups:
+        group_set = set(group)
+        for instr in group:
+            INSTRUMENT_TO_EQUIV[instr] = group_set
+
+DEFAULT_NIVEAU = 0.25   # kleiner = Distraktoren noch stärker aus Nachbarfamilien
+NIVEAU_STEP = 0.15
+WEIGHT_FLOOR = 0.02   # Restwahrscheinlichkeit für ferne Instrumente (nie exakt 0)
+
+
+
+def get_family(instr):
+    return INSTRUMENT_TO_FAMILY.get(normalize_instrument_name(instr))
+
+def family_distance(a, b):
+    ia, ib = FAMILY_INDEX.get(get_family(a)), FAMILY_INDEX.get(get_family(b))
+    if ia is None or ib is None:
+        return None
+    return abs(ia - ib)
+
+def family_weight(candidate, reference, decay=None):
+    if decay is None:
+        decay = 1 - DEFAULT_NIVEAU
+    d = family_distance(candidate, reference)
+    if d is None:
+        return WEIGHT_FLOOR
+    return max(WEIGHT_FLOOR, decay ** d)
+
+def are_equivalent(a, b):
+    a, b = normalize_instrument_name(a), normalize_instrument_name(b)
+    if a == b:
+        return True
+    return b in INSTRUMENT_TO_EQUIV.get(a, {a})
+
+def family_decay_weight(norm, target, decay):
+    """Wie family_weight, aber OHNE WEIGHT_FLOOR – sauberer Gradient für find_instrument."""
+    d = family_distance(norm, target)
+    if d is None:
+        d = 6  # unbekannte Familie = "ziemlich weit"
+    return decay ** d
+
+def count_weight(norm):
+    """Anzahlsgewicht der Äquivalenzgruppe: 4. Wurzel der Beispielanzahl."""
+    group = INSTRUMENT_TO_EQUIV.get(norm, {norm})
+    return EQUIV_COUNT_WEIGHT.get(frozenset(group), 0.0)
+
+def pick_weighted_instrument_names(references, amount, exclude=None):
+    """Namensbasierte Auswahl (für test.html-Distraktoren, die keine echte Audiodatei brauchen)."""
+    if not isinstance(references, (list, set, tuple)):
+        references = [references]
+    ref_norms = [normalize_instrument_name(r) for r in references]
+    exclude_norms = {normalize_instrument_name(e) for e in (exclude or [])}
+
+    candidates = {
+        normalize_instrument_name(instr)
+        for subdict in music_files.values()
+        for nick in subdict.values()
+        for instr in nick.get('instruments', [])
+    }
+
+    chosen, chosen_norms = [], set()
+    for _ in range(amount):
+        pool = [
+            c for c in candidates
+            if c not in exclude_norms and c not in chosen_norms
+            and not any(are_equivalent(c, r) for r in ref_norms)
+            and not any(are_equivalent(c, ch) for ch in chosen_norms)
+        ]
+        if not pool:
+            break
+        weights = [max(family_weight(c, r) for r in ref_norms) for c in pool]
+        pick = random.choices(pool, weights=weights, k=1)[0]
+        chosen.append(pick)
+        chosen_norms.add(pick)
+    return chosen
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+app.config['INSTRUMENT_ORDER'] = [
+    instr for groups in INSTRUMENT_FAMILIES.values() for instr in _family_members(groups)
+]
+
 app.config['FX'] = ['Gitarren-Amp', 'Bass-Amp', 'Hall']
 
 base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -199,6 +336,22 @@ music_directory = os.path.join(base_dir, 'static', 'music')
 instrument_directory = os.path.join(base_dir, 'static', 'instruments')
 effects_directory = os.path.join(base_dir, 'static', 'effects')
 music_files = sort_music_files(parse_music_files(music_directory))
+
+# Anzahl Audio-Beispiele je normalisiertem Instrument
+INSTRUMENT_COUNTS = {}
+for _subdict in music_files.values():
+    for _nick in _subdict.values():
+        for _instr in _nick.get('instruments', []):
+            _norm = normalize_instrument_name(_instr)
+            INSTRUMENT_COUNTS[_norm] = INSTRUMENT_COUNTS.get(_norm, 0) + 1
+
+# Anzahlsgewicht je Äquivalenzgruppe = 4. Wurzel der summierten Beispiele.
+# key = frozenset der Gruppe (aus den inneren Listen von INSTRUMENT_FAMILIES)
+EQUIV_COUNT_WEIGHT = {}
+for _groups in INSTRUMENT_FAMILIES.values():
+    for _group in _groups:
+        _n = sum(INSTRUMENT_COUNTS.get(g, 0) for g in _group)
+        EQUIV_COUNT_WEIGHT[frozenset(_group)] = _n ** 0.25 if _n > 0 else 0.0
 
 if debug:
     print(f"music files is: {music_files}")
@@ -289,12 +442,100 @@ def instrument_test():
 
 
     # Prepare instrument data
-    instrument_data = get_instrument_data(sorted_instruments, primary_instrument)
+    instrument_data = get_instrument_data(sorted_instruments, [primary_instrument])
     metadata = track_info.get('metadata', {})
 
     if  debug:
         print(f"rendering an instrument test with instruments {sorted_instruments} and data: {instrument_data}")
     return render_template('test.html', difficulty='einzel', nickname=nickname, genre=genre, instruments=instrument_data, metadata=metadata, music_directory=os.path.join(music_directory, genre))
+
+
+
+
+@app.route('/find_instrument')
+def find_instrument():
+    # Adaptiver Zustand aus Query-Parametern
+    try:
+        niveau = float(request.args.get('niveau', DEFAULT_NIVEAU))
+    except (TypeError, ValueError):
+        niveau = DEFAULT_NIVEAU
+    try:
+        run = int(request.args.get('run', 1))
+    except (TypeError, ValueError):
+        run = 1
+    niveau = max(0.0, min(1.0, niveau))
+    run = max(1, run)
+
+    # Höheres Niveau -> kleinerer Decay -> Distraktoren aus näheren Familien -> schwerer
+    effective_decay = max(0.05, 1.0 - niveau)
+
+    # Flache Liste aller Stems: (genre, nickname, instrument)
+    stem_pool = [
+        (genre, nickname, instr)
+        for genre, tracks in music_files.items()
+        for nickname, info in tracks.items()
+        for instr in info.get('instruments', [])
+    ]
+    if not stem_pool:
+        return "Keine Musikdateien gefunden.", 404
+
+    by_instrument = {}
+    for stem in stem_pool:
+        norm = normalize_instrument_name(stem[2])
+        by_instrument.setdefault(norm, []).append(stem)
+
+    target = random.choice(list(by_instrument.keys()))
+    correct_stem = random.choice(by_instrument[target])
+
+    # Distraktoren: je Äquivalenzgruppe genau EINMAL (sonst zählt eine Gruppe
+    # mit mehreren Namen wie Drums/Drumset doppelt), gewichtet nach
+    # Familiennähe (adaptiver Decay, floor-frei) × Anzahlsgewicht (4. Wurzel).
+    seen_groups = set()
+    candidates = []
+    for n in by_instrument.keys():
+        if are_equivalent(n, target):
+            continue
+        key = frozenset(INSTRUMENT_TO_EQUIV.get(n, {n}))
+        if key in seen_groups:
+            continue
+        seen_groups.add(key)
+        candidates.append(n)
+
+    distractors = []
+    while candidates and len(distractors) < 3:
+        weights = [
+            family_decay_weight(n, target, effective_decay) * count_weight(n)
+            for n in candidates
+        ]
+        pick_norm = random.choices(candidates, weights=weights, k=1)[0]
+        candidates.remove(pick_norm)
+
+        # Stem aus der gesamten Äquivalenzgruppe wählen (nicht nur aus einem Namen)
+        group = INSTRUMENT_TO_EQUIV.get(pick_norm, {pick_norm})
+        group_stems = [s for g in group for s in by_instrument.get(g, [])]
+        distractors.append(random.choice(group_stems))
+
+    chosen = [correct_stem] + distractors
+    options = []
+    for genre, nickname, instr in chosen:
+        options.append({
+            'genre': genre,
+            'nickname': nickname,
+            'instrument': instr,
+            'image': image_exists(instr),
+            'is_correct': (genre, nickname, instr) == correct_stem,
+        })
+    random.shuffle(options)
+
+    return render_template(
+        'find.html',
+        target=target,
+        target_image=image_exists(target),
+        options=options,
+        niveau=niveau,
+        run=run,
+        niveau_step=NIVEAU_STEP,
+    )
 
 
 

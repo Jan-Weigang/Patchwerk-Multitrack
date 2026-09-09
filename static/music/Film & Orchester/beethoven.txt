@@ -1,0 +1,4 @@
+Artist: Beethoven (Academy of Finland)
+Title: Sinfonie Nr. 7, 1. Satz 
+Genre: Sinfonie
+Copyright: https://research.cs.aalto.fi/acoustics/virtual-acoustics/research/acoustic-measurement-and-analysis/85-anechoic-recordings.html

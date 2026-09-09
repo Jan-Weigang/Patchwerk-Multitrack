@@ -72,6 +72,13 @@
             border-style: inset;
         }
 
+        .playback-grid button:disabled {
+            opacity: 0.4;
+            cursor: wait;
+            background-color: hsl(40, 15%, 55%);
+            border-color: hsl(40, 15%, 55%);
+        }
+
         @keyframes rainbow-shadow {
             0%   { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(0, 80%, 80%)); }   /* Red */
             15%  { filter: drop-shadow(0 0 calc(var(--shadow-intensity)/2) hsl(30, 80%, 80%)); }  /* Orange */
@@ -227,7 +234,7 @@
 
 
     <div class="playback-grid" style="margin-top:4rem;">
-        <button id="playPauseButton" onclick="playAll()">▶</button>
+        <button id="playPauseButton" onclick="playAll()" disabled autocomplete="off" title="Lädt…">▶</button>
         <button onclick="stopAll()">⏹</button>
         <div id="progressBar">
             <div id="progress"></div>
@@ -260,6 +267,13 @@
 
 
     <script>
+        // erstmal nicht anklickbarer Button
+        (function () {
+            const playBtn = document.getElementById('playPauseButton');
+            if (playBtn) { playBtn.disabled = true; playBtn.title = 'Lädt…'; }
+        })();
+
+
 
         var audioContext = new (window.AudioContext || window.webkitAudioContext)();
         var audioBuffers = {};  // Stores the decoded audio data
@@ -312,10 +326,16 @@
             Promise.all(loadPromises)
                 .then(() => {
                     console.log('All audio files loaded successfully');
+                    const playBtn = document.getElementById('playPauseButton');
+                    playBtn.disabled = false;
+                    playBtn.removeAttribute('title');
                     // setupAudioElements();  // Call setup only after all files are loaded
                 })
                 .catch(error => {
                     console.error('Failed to load all audio files:', error);
+                    const playBtn = document.getElementById('playPauseButton');
+                    playBtn.disabled = false;   // trotzdem freigeben, sonst hängt man fest
+                    playBtn.title = 'Einige Dateien konnten nicht geladen werden';
                 });
         }
 

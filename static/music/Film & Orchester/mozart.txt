@@ -1,0 +1,4 @@
+Artist: Mozart (Academy of Finland)
+Title: Arie aus der Oper Don Giovanni
+Genre: Oper
+Copyright: https://research.cs.aalto.fi/acoustics/virtual-acoustics/research/acoustic-measurement-and-analysis/85-anechoic-recordings.html
